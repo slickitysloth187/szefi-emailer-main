@@ -8,7 +8,7 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'Szefi Email Sender 2000 Deluxe Pro',
+  title: 'NightOwl Mail',
   description: 'Professional email editor with email-safe HTML output',
   generator: 'v0.app',
   icons: {

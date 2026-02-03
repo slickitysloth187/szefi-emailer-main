@@ -1,1 +1,1 @@
-# heo heo sziasztok
+# heo heo sziasztok dev: slickitysloth www.viragtamas.eu

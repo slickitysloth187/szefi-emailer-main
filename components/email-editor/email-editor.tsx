@@ -13,9 +13,11 @@ import { Input } from "@/components/ui/input";
 import { DEFAULT_HTML, DEFAULT_CSS } from "@/lib/default-template";
 import { generateEmailHTML } from "@/lib/css-inliner";
 import { 
-  RotateCcw, Send, Mail, Maximize2, Settings, FolderOpen, 
-  Code, Eye, Users, Menu, X 
+  RotateCcw, Send, Bird, Maximize2, Settings, FolderOpen, 
+  Code, Eye, Users, Menu, X, CreditCard, LogIn 
 } from "lucide-react";
+import Link from "next/link";
+import { Mail } from "lucide-react"; // Added import for Mail
 import {
   ResizableHandle,
   ResizablePanel,
@@ -36,7 +38,7 @@ export function EmailEditor() {
   const [css, setCss] = useState(DEFAULT_CSS);
   const [subject, setSubject] = useState("Email tárgy");
   const [fromEmail, setFromEmail] = useState("");
-  const [fromName, setFromName] = useState("Szefi");
+  const [fromName, setFromName] = useState("NightOwl");
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [selectedRecipients, setSelectedRecipients] = useState<Set<string>>(new Set());
   const [sendDialogOpen, setSendDialogOpen] = useState(false);
@@ -151,64 +153,78 @@ export function EmailEditor() {
       {/* Header - Desktop */}
       <header className="border-b border-border bg-card px-4 py-3 hidden md:flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Mail className="h-6 w-6 text-primary" />
-          <h1 className="text-lg font-semibold text-foreground">Szefi Email Sender 2000 Deluxe Pro</h1>
+          <Bird className="h-6 w-6 text-primary" />
+          <h1 className="text-lg font-semibold text-foreground">NightOwl Mail</h1>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => setTemplatesDialogOpen(true)}
-            className="gap-1.5"
-          >
-            <FolderOpen className="h-4 w-4" />
-            Sablonok
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={resetTemplate}
-            className="gap-1.5"
-          >
-            <RotateCcw className="h-4 w-4" />
-            Alaphelyzet
-          </Button>
-          
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setPreviewDialogOpen(true)}
-            className="gap-1.5"
-          >
-            <Maximize2 className="h-4 w-4" />
-            Előnézet
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setSettingsDialogOpen(true)}
-            className={`gap-1.5 ${!smtpConfigured ? "border-primary text-primary" : ""}`}
-          >
-            <Settings className="h-4 w-4" />
-            {!smtpConfigured && <span className="text-xs">!</span>}
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => setSendDialogOpen(true)}
-            disabled={selectedRecipients.size === 0 || !smtpConfigured}
-            className="gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground"
-          >
-            <Send className="h-4 w-4" />
-            Küldés ({selectedRecipients.size})
-          </Button>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Link href="/pricing">
+              <Button variant="ghost" size="sm" className="gap-1.5">
+                <CreditCard className="h-4 w-4" />
+                Pricing
+              </Button>
+            </Link>
+            <Button variant="outline" size="sm" className="gap-1.5 bg-transparent" onClick={() => alert("Sign In coming soon!")}>
+              <LogIn className="h-4 w-4" />
+              Sign In
+            </Button>
+          </div>
+          <div className="h-6 w-px bg-border" />
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setTemplatesDialogOpen(true)}
+              className="gap-1.5"
+            >
+              <FolderOpen className="h-4 w-4" />
+              Sablonok
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={resetTemplate}
+              className="gap-1.5"
+            >
+              <RotateCcw className="h-4 w-4" />
+              Alaphelyzet
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPreviewDialogOpen(true)}
+              className="gap-1.5"
+            >
+              <Maximize2 className="h-4 w-4" />
+              Előnézet
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSettingsDialogOpen(true)}
+              className={`gap-1.5 ${!smtpConfigured ? "border-primary text-primary" : ""}`}
+            >
+              <Settings className="h-4 w-4" />
+              {!smtpConfigured && <span className="text-xs">!</span>}
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => setSendDialogOpen(true)}
+              disabled={selectedRecipients.size === 0 || !smtpConfigured}
+              className="gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground"
+            >
+              <Send className="h-4 w-4" />
+              Küldés ({selectedRecipients.size})
+            </Button>
+          </div>
         </div>
       </header>
 
       {/* Header - Mobile */}
       <header className="border-b border-border bg-card px-3 py-2 flex md:hidden items-center justify-between">
         <div className="flex items-center gap-2">
-          <Mail className="h-5 w-5 text-primary" />
-          <h1 className="text-sm font-semibold text-foreground truncate">Szefi Email Sender</h1>
+          <Bird className="h-5 w-5 text-primary" />
+          <h1 className="text-sm font-semibold text-foreground truncate">NightOwl Mail</h1>
         </div>
         <div className="flex items-center gap-1">
           <Button
@@ -524,7 +540,7 @@ export function EmailEditor() {
       {/* Footer */}
       <footer className="border-t border-border bg-card px-4 py-2 text-center">
         <span className="text-xs text-muted-foreground">
-          developed by SlickitySloth -{" "}
+          NightOwl Mail - developed by SlickitySloth -{" "}
           <a
             href="https://www.viragtamas.dev"
             target="_blank"

@@ -115,17 +115,28 @@ export function InteractivePreview({
     let innerContent = "";
     
     const renderElement = (el: EditableElement): string => {
+      const textAlign = el.styles.textAlign || 'center';
       switch (el.type) {
         case "row":
           const cellWidth = el.children ? Math.floor(100 / el.children.length) : 100;
+          // Row with buttons - use nested table for better mobile stacking
           return `<tr>
-${el.children?.map(child => `  <td width="${cellWidth}%" align="${child.styles.textAlign || 'center'}" style="vertical-align:top;">
-    ${renderElementContent(child)}
-  </td>`).join("\n") || ""}
+  <td align="center" style="padding:10px 0;">
+    <table cellpadding="0" cellspacing="0" border="0" class="row-table" style="width:100%;">
+      <tr>
+${el.children?.map(child => {
+  const childAlign = child.styles.textAlign || 'center';
+  return `        <td class="row-cell" width="${cellWidth}%" align="${childAlign}" style="vertical-align:top;text-align:${childAlign};padding:5px;">
+          ${renderElementContent(child)}
+        </td>`;
+}).join("\n") || ""}
+      </tr>
+    </table>
+  </td>
 </tr>`;
         default:
           return `<tr>
-  <td align="${el.styles.textAlign || 'left'}" style="padding:${el.styles.padding || '10px 0'};">
+  <td align="${textAlign}" style="padding:${el.styles.padding || '10px 0'};text-align:${textAlign};">
     ${renderElementContent(el)}
   </td>
 </tr>`;
@@ -139,7 +150,7 @@ ${el.children?.map(child => `  <td width="${cellWidth}%" align="${child.styles.t
         case "image":
           const imgWidth = el.styles.width || "100%";
           const imgHeight = el.styles.height || "auto";
-          return `<img src="${el.src || ''}" alt="Kép" style="max-width:100%;width:${imgWidth};height:${imgHeight};border-radius:${el.styles.borderRadius || '0'}px;">`;
+          return `<img src="${el.src || ''}" alt="Kép" class="responsive-img" style="max-width:100%;width:${imgWidth};height:${imgHeight};border-radius:${el.styles.borderRadius || '0'}px;display:block;">`;
         case "divider":
           return `<hr style="border:none;border-top:1px solid ${el.styles.color || '#333'};margin:0;">`;
         case "spacer":
@@ -147,6 +158,7 @@ ${el.children?.map(child => `  <td width="${cellWidth}%" align="${child.styles.t
         case "social":
           if (!el.socialIcons || el.socialIcons.length === 0) return "";
           // Use PNG images from CDN instead of SVG (email clients don't support inline SVG)
+          // Use a table to keep icons in one row
           const socialImageUrls: Record<string, string> = {
             facebook: "https://cdn-icons-png.flaticon.com/512/124/124010.png",
             instagram: "https://cdn-icons-png.flaticon.com/512/174/174855.png",
@@ -156,13 +168,16 @@ ${el.children?.map(child => `  <td width="${cellWidth}%" align="${child.styles.t
             linkedin: "https://cdn-icons-png.flaticon.com/512/174/174857.png",
             patreon: "https://cdn-icons-png.flaticon.com/512/2111/2111548.png",
           };
-          return el.socialIcons.map(icon => {
+          const iconCells = el.socialIcons.map(icon => {
             const imgUrl = socialImageUrls[icon.platform] || "";
             const platform = socialPlatforms[icon.platform];
-            return `<a href="${icon.url}" style="display:inline-block;margin:0 8px;text-decoration:none;" title="${platform.name}">
-              <img src="${imgUrl}" alt="${platform.name}" width="${icon.size || '32'}" height="${icon.size || '32'}" style="display:block;border:0;outline:none;">
-            </a>`;
+            return `<td style="padding:0 8px;">
+              <a href="${icon.url}" style="text-decoration:none;" title="${platform.name}">
+                <img src="${imgUrl}" alt="${platform.name}" width="${icon.size || '32'}" height="${icon.size || '32'}" style="display:block;border:0;outline:none;">
+              </a>
+            </td>`;
           }).join("");
+          return `<table cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;"><tr>${iconCells}</tr></table>`;
         default:
           return `<span style="color:${el.styles.color || '#ffffff'};font-size:${el.styles.fontSize || '16'}px;${el.styles.fontWeight === 'bold' ? 'font-weight:bold;' : ''}${el.styles.fontStyle === 'italic' ? 'font-style:italic;' : ''}${el.styles.textDecoration === 'underline' ? 'text-decoration:underline;' : ''}">${el.content.replace(/\n/g, '<br>')}</span>`;
       }
@@ -172,15 +187,65 @@ ${el.children?.map(child => `  <td width="${cellWidth}%" align="${child.styles.t
       innerContent += renderElement(el);
     });
 
-    const newHtml = `<table width="100%" cellpadding="0" cellspacing="0" bgcolor="#0b0b0b">
-<tr>
-  <td align="center">
-    <table width="600" cellpadding="30" cellspacing="0" bgcolor="#111111">
+    // Responsive email HTML with media queries for mobile
+    const responsiveStyles = `
+<style type="text/css">
+  @media only screen and (max-width: 620px) {
+    .email-container {
+      width: 100% !important;
+      max-width: 100% !important;
+    }
+    .row-table {
+      width: 100% !important;
+    }
+    .row-cell {
+      display: block !important;
+      width: 100% !important;
+      padding: 10px 0 !important;
+    }
+    .responsive-img {
+      width: 100% !important;
+      height: auto !important;
+    }
+  }
+</style>
+<!--[if mso]>
+<style type="text/css">
+  .row-cell { display: table-cell !important; }
+</style>
+<![endif]-->`;
+
+    const newHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>Email</title>
+  ${responsiveStyles}
+</head>
+<body style="margin:0;padding:0;background-color:#0b0b0b;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0b0b0b" style="background-color:#0b0b0b;">
+    <tr>
+      <td align="center" style="padding:20px 10px;">
+        <!--[if mso]>
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+        <td>
+        <![endif]-->
+        <table role="presentation" class="email-container" width="600" cellpadding="30" cellspacing="0" border="0" bgcolor="#111111" style="background-color:#111111;max-width:600px;width:100%;">
 ${innerContent}
-    </table>
-  </td>
-</tr>
-</table>`;
+        </table>
+        <!--[if mso]>
+        </td>
+        </tr>
+        </table>
+        <![endif]-->
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
 
     lastHtmlRef.current = newHtml;
     onHtmlChange(newHtml);
@@ -445,11 +510,88 @@ ${innerContent}
         return elements;
       }
       
+      // Check for nested row-table (buttons in a row)
+      const nestedRowTable = td.querySelector("table.row-table, table[class*='row-table']");
+      if (nestedRowTable) {
+        const nestedCells = nestedRowTable.querySelectorAll("td.row-cell, td[class*='row-cell']");
+        if (nestedCells.length > 0) {
+          const rowChildren: EditableElement[] = [];
+          nestedCells.forEach(nestedCell => {
+            // Look for button links in nested cells
+            const link = nestedCell.querySelector("a");
+            if (link) {
+              const linkStyle = link.getAttribute("style") || "";
+              const hasBackground = linkStyle.includes("background");
+              const linkText = link.textContent?.trim() || "";
+              
+              if (hasBackground && linkText) {
+                rowChildren.push({
+                  id: `el-${idCounter++}`,
+                  type: "button",
+                  content: linkText,
+                  href: link.getAttribute("href") || "#",
+                  styles: {
+                    color: getStyle(linkStyle, "color", "#ffffff"),
+                    backgroundColor: getStyle(linkStyle, "background", "#ff0000"),
+                    fontSize: getStyle(linkStyle, "font-size", "16px").replace("px", ""),
+                    padding: getStyle(linkStyle, "padding", "14px 28px"),
+                    margin: "0",
+                    textAlign: "center",
+                    borderRadius: getStyle(linkStyle, "border-radius", "6px").replace("px", ""),
+                    fontWeight: getStyle(linkStyle, "font-weight", "bold"),
+                    fontStyle: "normal",
+                    textDecoration: "none",
+                  },
+                });
+              }
+            }
+            // Look for images in nested cells
+            const img = nestedCell.querySelector("img");
+            if (img && !link) {
+              const imgStyle = img.getAttribute("style") || "";
+              rowChildren.push({
+                id: `el-${idCounter++}`,
+                type: "image",
+                content: "",
+                src: img.getAttribute("src") || "",
+                styles: {
+                  color: "", backgroundColor: "",
+                  fontSize: "",
+                  padding: "0", margin: "0",
+                  textAlign: "center",
+                  borderRadius: getStyle(imgStyle, "border-radius", "0").replace("px", ""),
+                  fontWeight: "normal", fontStyle: "normal", textDecoration: "none",
+                  width: img.getAttribute("width") || getStyle(imgStyle, "width", "100%"),
+                  height: img.getAttribute("height") || getStyle(imgStyle, "height", "auto"),
+                },
+              });
+            }
+          });
+          
+          if (rowChildren.length > 0) {
+            elements.push({
+              id: `el-${idCounter++}`,
+              type: "row",
+              content: "",
+              children: rowChildren,
+              styles: {
+                color: "", backgroundColor: "", fontSize: "", padding: "0",
+                margin: "0", textAlign: "center", borderRadius: "0",
+                fontWeight: "normal", fontStyle: "normal", textDecoration: "none",
+              },
+            });
+            return elements;
+          }
+        }
+      }
+      
       // First check for direct child elements
       const children = td.children;
       if (children.length > 0) {
         for (let i = 0; i < children.length; i++) {
           const child = children[i];
+          // Skip nested tables, we handled them above
+          if (child.tagName?.toLowerCase() === "table") continue;
           const parsed = processNode(child);
           if (parsed) {
             parsed.styles.textAlign = tdAlign;
