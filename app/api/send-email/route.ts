@@ -84,15 +84,32 @@ export async function POST(request: NextRequest) {
 
   try {
     // Transporter létrehozása - csak ha minden validáció sikeres
-    const transportConfig = {
+    const port = Number(smtp.port) || 587;
+    const isSecure = smtp.secure || port === 465;
+    
+    // SSL/TLS konfiguráció 465-ös porthoz
+    const transportConfig: nodemailer.TransportOptions = {
       host: String(smtp.host).trim(),
-      port: Number(smtp.port) || 587,
-      secure: smtp.secure || Number(smtp.port) === 465,
+      port: port,
+      secure: isSecure, // true for 465, false for other ports
       auth: {
         user: String(smtp.user).trim(),
         pass: String(smtp.pass),
       },
-    };
+      // TLS beállítások - fontos a saját domain szerverekhez
+      tls: {
+        // Ne ellenőrizze a tanúsítvány érvényességét (self-signed cert esetén)
+        rejectUnauthorized: false,
+        // Minimum TLS verzió
+        minVersion: 'TLSv1.2' as const,
+      },
+      // Connection timeout
+      connectionTimeout: 30000,
+      // Greeting timeout  
+      greetingTimeout: 15000,
+      // Socket timeout
+      socketTimeout: 30000,
+    } as nodemailer.TransportOptions;
 
     const transporter = nodemailer.createTransport(transportConfig);
 

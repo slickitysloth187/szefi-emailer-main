@@ -30,13 +30,16 @@ import {
   Share2,
   Plus,
   Copy,
+  Sparkles,
 } from "lucide-react";
+import { useLanguage } from "@/lib/i18n";
 
 interface InteractivePreviewProps {
   html: string;
   css: string;
   fullscreen?: boolean;
   onHtmlChange: (html: string) => void;
+  onAiClick?: () => void;
 }
 
 interface SocialIcon {
@@ -80,12 +83,14 @@ const socialPlatforms = {
   patreon: { name: "Patreon", defaultColor: "#FF424D", icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M15.386.524c-4.764 0-8.64 3.876-8.64 8.64 0 4.75 3.876 8.613 8.64 8.613 4.75 0 8.614-3.864 8.614-8.613C24 4.4 20.136.524 15.386.524M.003 23.537h4.22V.524H.003"/></svg>` },
 };
 
-export function InteractivePreview({ 
-  html, 
-  css, 
+export function InteractivePreview({
+  html,
+  css,
   fullscreen = false,
-  onHtmlChange 
-}: InteractivePreviewProps) {
+  onHtmlChange,
+  onAiClick
+  }: InteractivePreviewProps) {
+  const { t } = useLanguage();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [elements, setElements] = useState<EditableElement[]>([]);
   const [history, setHistory] = useState<EditableElement[][]>([]);
@@ -1340,11 +1345,21 @@ ${innerContent}
           <Button size="sm" variant="ghost" onClick={() => addElement("row")} className="h-6 px-1.5 text-[10px] gap-0.5" title="Sor (2 oszlop)">
             <Columns className="h-3 w-3" />
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => addElement("social")} className="h-6 px-1.5 text-[10px] gap-0.5" title="Social Media">
-            <Share2 className="h-3 w-3" />
-          </Button>
-        </div>
-      </div>
+<Button size="sm" variant="ghost" onClick={() => addElement("social")} className="h-6 px-1.5 text-[10px] gap-0.5" title="Social Media">
+  <Share2 className="h-3 w-3" />
+  </Button>
+  </div>
+  {onAiClick && (
+  <Button 
+    size="sm" 
+    onClick={onAiClick}
+    className="h-6 px-2 text-[10px] gap-1 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white shadow-sm"
+  >
+    <Sparkles className="h-3 w-3" />
+    {t("ai.button")}
+  </Button>
+  )}
+  </div>
 
       {/* Toolbar */}
       {selectedElement && (

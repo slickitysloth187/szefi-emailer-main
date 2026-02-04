@@ -8,13 +8,14 @@ import { RecipientList, type Recipient } from "./recipient-list";
 import { SendDialog } from "./send-dialog";
 import { SettingsDialog, loadSettings, type SmtpSettings } from "./settings-dialog";
 import { TemplateManager, type EmailTemplate } from "./template-manager";
+import { AIEditorDialog } from "./ai-editor-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DEFAULT_HTML, DEFAULT_CSS } from "@/lib/default-template";
 import { generateEmailHTML } from "@/lib/css-inliner";
 import { 
   RotateCcw, Send, Bird, Maximize2, Settings, FolderOpen, 
-  Code, Eye, Users, Menu, X, CreditCard, LogIn 
+  Code, Eye, Users, Menu, X, CreditCard, LogIn, Globe, Sparkles 
 } from "lucide-react";
 import Link from "next/link";
 import { Mail } from "lucide-react"; // Added import for Mail
@@ -30,6 +31,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { useLanguage, type Language } from "@/lib/i18n";
 
 type MobileTab = "code" | "preview" | "recipients";
 
@@ -45,6 +47,7 @@ export function EmailEditor() {
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
   const [templatesDialogOpen, setTemplatesDialogOpen] = useState(false);
+  const [aiDialogOpen, setAiDialogOpen] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [sendResult, setSendResult] = useState<{ success: boolean; message: string } | null>(null);
   const [smtpSettings, setSmtpSettings] = useState<SmtpSettings>({
@@ -58,6 +61,7 @@ export function EmailEditor() {
   });
   const [mobileTab, setMobileTab] = useState<MobileTab>("code");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { language, setLanguage, t } = useLanguage();
 
   // Load settings from localStorage on mount
   useEffect(() => {
@@ -158,15 +162,24 @@ export function EmailEditor() {
         </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setLanguage(language === "en" ? "hu" : "en")}
+              className="gap-1.5 px-2"
+            >
+              <Globe className="h-4 w-4" />
+              {language === "en" ? "EN" : "HU"}
+            </Button>
             <Link href="/pricing">
               <Button variant="ghost" size="sm" className="gap-1.5">
                 <CreditCard className="h-4 w-4" />
-                Pricing
+                {t("header.pricing")}
               </Button>
             </Link>
-            <Button variant="outline" size="sm" className="gap-1.5 bg-transparent" onClick={() => alert("Sign In coming soon!")}>
+            <Button variant="outline" size="sm" className="gap-1.5 bg-transparent" onClick={() => alert(t("general.comingSoon"))}>
               <LogIn className="h-4 w-4" />
-              Sign In
+              {t("header.signIn")}
             </Button>
           </div>
           <div className="h-6 w-px bg-border" />
@@ -178,7 +191,7 @@ export function EmailEditor() {
               className="gap-1.5"
             >
               <FolderOpen className="h-4 w-4" />
-              Sablonok
+              {t("header.templates")}
             </Button>
             <Button
               variant="secondary"
@@ -187,7 +200,7 @@ export function EmailEditor() {
               className="gap-1.5"
             >
               <RotateCcw className="h-4 w-4" />
-              Alaphelyzet
+              {t("header.reset")}
             </Button>
             <Button
               variant="outline"
@@ -196,7 +209,7 @@ export function EmailEditor() {
               className="gap-1.5"
             >
               <Maximize2 className="h-4 w-4" />
-              Előnézet
+              {t("header.preview")}
             </Button>
             <Button
               variant="outline"
@@ -214,7 +227,7 @@ export function EmailEditor() {
               className="gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground"
             >
               <Send className="h-4 w-4" />
-              Küldés ({selectedRecipients.size})
+              {t("header.send")} ({selectedRecipients.size})
             </Button>
           </div>
         </div>
@@ -403,14 +416,16 @@ export function EmailEditor() {
             <ResizablePanelGroup direction="vertical" className="h-full">
               {/* HTML Editor */}
               <ResizablePanel defaultSize={60} minSize={20}>
-                <div className="h-full p-2">
-                  <CodeEditor
-                    value={html}
-                    onChange={setHtml}
-                    language="html"
-                    label="HTML Tartalom"
-                  />
-                </div>
+<div className="h-full p-2">
+  <CodeEditor
+    value={html}
+    onChange={setHtml}
+    language="html"
+    label={t("editor.htmlContent")}
+    showAiButton
+    onAiClick={() => setAiDialogOpen(true)}
+  />
+  </div>
               </ResizablePanel>
               <ResizableHandle withHandle />
               {/* CSS Editor */}
@@ -432,9 +447,9 @@ export function EmailEditor() {
           {/* Preview Panel - Interactive */}
           <ResizablePanel defaultSize={30} minSize={15}>
             <div className="h-full p-2">
-              <InteractivePreview html={html} css={css} onHtmlChange={setHtml} />
-            </div>
-          </ResizablePanel>
+<InteractivePreview html={html} css={css} onHtmlChange={setHtml} onAiClick={() => setAiDialogOpen(true)} />
+  </div>
+  </ResizablePanel>
 
           <ResizableHandle withHandle />
 
@@ -462,7 +477,9 @@ export function EmailEditor() {
                 value={html}
                 onChange={setHtml}
                 language="html"
-                label="HTML Tartalom"
+                label={t("editor.htmlContent")}
+                showAiButton
+                onAiClick={() => setAiDialogOpen(true)}
               />
             </div>
             <div className="h-[30%] min-h-[120px] p-2 pt-0">
@@ -470,18 +487,18 @@ export function EmailEditor() {
                 value={css}
                 onChange={setCss}
                 language="css"
-                label="CSS Stílusok"
+                label={t("editor.cssStyles")}
               />
             </div>
           </div>
         )}
 
         {/* Preview Tab */}
-        {mobileTab === "preview" && (
-          <div className="h-full p-2">
-            <InteractivePreview html={html} css={css} onHtmlChange={setHtml} />
-          </div>
-        )}
+{mobileTab === "preview" && (
+  <div className="h-full p-2">
+  <InteractivePreview html={html} css={css} onHtmlChange={setHtml} onAiClick={() => setAiDialogOpen(true)} />
+  </div>
+  )}
 
         {/* Recipients Tab */}
         {mobileTab === "recipients" && (
@@ -535,6 +552,18 @@ export function EmailEditor() {
         onConfirm={handleSend}
         isSending={isSending}
         result={sendResult}
+      />
+
+      {/* AI Editor Dialog */}
+      <AIEditorDialog
+        open={aiDialogOpen}
+        onOpenChange={setAiDialogOpen}
+        currentHtml={html}
+        currentCss={css}
+        onApply={(newHtml, newCss) => {
+          setHtml(newHtml);
+          if (newCss) setCss(newCss);
+        }}
       />
 
       {/* Footer */}

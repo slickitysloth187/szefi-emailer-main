@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Save, Eye, EyeOff, Globe, Mail } from "lucide-react";
+import { Save, Eye, EyeOff, Globe, Mail, CheckCircle, XCircle, Loader2, Plug } from "lucide-react";
 
 export interface SmtpSettings {
   host: string;
@@ -95,6 +95,8 @@ export function SettingsDialog({
   const [localSettings, setLocalSettings] = useState<SmtpSettings>(settings);
   const [showPassword, setShowPassword] = useState(false);
   const [activeTab, setActiveTab] = useState<"smtp" | "email">("smtp");
+  const [testStatus, setTestStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
+  const [testMessage, setTestMessage] = useState("");
 
   useEffect(() => {
     setLocalSettings(settings);
@@ -104,6 +106,44 @@ export function SettingsDialog({
     saveSettings(localSettings);
     onSave(localSettings);
     onOpenChange(false);
+  };
+
+  const testConnection = async () => {
+    if (!localSettings.host || !localSettings.port || !localSettings.user || !localSettings.pass) {
+      setTestStatus("error");
+      setTestMessage("Kérlek töltsd ki az összes SMTP mezőt!");
+      return;
+    }
+
+    setTestStatus("testing");
+    setTestMessage("");
+
+    try {
+      const response = await fetch("/api/test-smtp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          host: localSettings.host,
+          port: localSettings.port,
+          user: localSettings.user,
+          pass: localSettings.pass,
+          secure: localSettings.secure,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setTestStatus("success");
+        setTestMessage(data.message || "Kapcsolat sikeres!");
+      } else {
+        setTestStatus("error");
+        setTestMessage(data.error || "Kapcsolat sikertelen");
+      }
+    } catch (error) {
+      setTestStatus("error");
+      setTestMessage("Hálózati hiba történt");
+    }
   };
 
   return (
@@ -215,6 +255,46 @@ export function SettingsDialog({
                   checked={localSettings.secure}
                   onCheckedChange={(checked) => setLocalSettings({ ...localSettings, secure: checked })}
                 />
+              </div>
+
+              {/* Connection Test */}
+              <div className="pt-2 border-t border-border">
+                <div className="flex items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={testConnection}
+                    disabled={testStatus === "testing"}
+                    className="gap-1.5 bg-transparent"
+                  >
+                    {testStatus === "testing" ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Csatlakozás...
+                      </>
+                    ) : (
+                      <>
+                        <Plug className="h-4 w-4" />
+                        Kapcsolat tesztelése
+                      </>
+                    )}
+                  </Button>
+                  
+                  {testStatus === "success" && (
+                    <div className="flex items-center gap-1.5 text-green-500 text-sm">
+                      <CheckCircle className="h-4 w-4" />
+                      <span>{testMessage}</span>
+                    </div>
+                  )}
+                  
+                  {testStatus === "error" && (
+                    <div className="flex items-center gap-1.5 text-red-500 text-sm max-w-[250px]">
+                      <XCircle className="h-4 w-4 flex-shrink-0" />
+                      <span className="truncate" title={testMessage}>{testMessage}</span>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
