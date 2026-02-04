@@ -37,6 +37,13 @@ interface SupabaseConfig {
   url: string;
   anonKey: string;
   table: string;
+  emailColumn: string;
+  nameColumn: string;
+}
+
+interface TableColumn {
+  name: string;
+  type: string;
 }
 
 interface RecipientListProps {
@@ -61,13 +68,25 @@ export function RecipientList({
   const [supabaseConfig, setSupabaseConfig] = useState<SupabaseConfig>({
     url: "",
     anonKey: "",
-    table: "subscribers",
+    table: "",
+    emailColumn: "",
+    nameColumn: "",
   });
   const [availableTables, setAvailableTables] = useState<string[]>([]);
+  const [tableColumns, setTableColumns] = useState<TableColumn[]>([]);
   const [isLoadingTables, setIsLoadingTables] = useState(false);
+  const [isLoadingColumns, setIsLoadingColumns] = useState(false);
   const [isLoadingRecipients, setIsLoadingRecipients] = useState(false);
   const [manualInput, setManualInput] = useState("");
   const [isConnected, setIsConnected] = useState(false);
+  const [supabaseLog, setSupabaseLog] = useState<string[]>([]);
+
+  // Add log message helper
+  const addLog = (message: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setSupabaseLog(prev => [...prev.slice(-19), `[${timestamp}] ${message}`]);
+    console.log(`[Supabase] ${message}`);
+  };
 
   // Load saved Supabase config
   useEffect(() => {
@@ -76,7 +95,13 @@ export function RecipientList({
       if (saved) {
         try {
           const config = JSON.parse(saved);
-          setSupabaseConfig(config);
+          setSupabaseConfig({
+            url: config.url || "",
+            anonKey: config.anonKey || "",
+            table: config.table || "",
+            emailColumn: config.emailColumn || "",
+            nameColumn: config.nameColumn || "",
+          });
           if (config.url && config.anonKey) {
             setIsConnected(true);
           }
@@ -141,26 +166,17 @@ export function RecipientList({
 
     setIsLoadingTables(true);
     setError(null);
+    setSupabaseLog([]);
+    addLog("Csatlakozás megkezdése...");
 
     try {
-      // Try to get tables by querying the information_schema
-      const response = await fetch(
-        `${supabaseConfig.url}/rest/v1/?apikey=${supabaseConfig.anonKey}`,
-        {
-          headers: {
-            apikey: supabaseConfig.anonKey,
-            Authorization: `Bearer ${supabaseConfig.anonKey}`,
-          },
-        }
-      );
+      const cleanUrl = supabaseConfig.url.replace(/\/$/, "");
+      addLog(`URL: ${cleanUrl}`);
 
-      if (!response.ok) {
-        throw new Error("Nem sikerült csatlakozni a Supabase-hez");
-      }
-
-      // Get available endpoints from OpenAPI schema
+      // Try to get OpenAPI schema for table list
+      addLog("Táblák lekérése...");
       const schemaResponse = await fetch(
-        `${supabaseConfig.url}/rest/v1/`,
+        `${cleanUrl}/rest/v1/`,
         {
           headers: {
             apikey: supabaseConfig.anonKey,
@@ -170,24 +186,161 @@ export function RecipientList({
         }
       );
 
+      addLog(`Válasz: ${schemaResponse.status}`);
+
+      // Even if schema fetch fails, we can still connect - user can enter table manually
       if (schemaResponse.ok) {
         const schema = await schemaResponse.json();
         if (schema.paths) {
           const tables = Object.keys(schema.paths)
             .filter((path) => path.startsWith("/") && !path.includes("{"))
-            .map((path) => path.slice(1));
+            .map((path) => path.slice(1))
+            .filter((table) => table.length > 0);
           setAvailableTables(tables);
+          addLog(`Talált táblák: ${tables.join(", ") || "nincs"}`);
+        } else if (schema.definitions) {
+          // Alternative: get tables from definitions
+          const tables = Object.keys(schema.definitions);
+          setAvailableTables(tables);
+          addLog(`Talált táblák (definitions): ${tables.join(", ")}`);
+        }
+      } else {
+        const errorText = await schemaResponse.text();
+        addLog(`Séma nem elérhető: ${schemaResponse.status}`);
+        
+        // Check if it's a permission issue
+        if (schemaResponse.status === 401 || schemaResponse.status === 403) {
+          addLog("A séma hozzáférés korlátozott - írd be manuálisan a tábla nevét!");
+          addLog("Ez normális, ha nincs séma olvasási jog beállítva.");
         }
       }
 
-      // Save config
+      // Save config and mark as connected (we'll verify actual table access when fetching)
       localStorage.setItem(SUPABASE_CONFIG_KEY, JSON.stringify(supabaseConfig));
       setIsConnected(true);
+      addLog("Csatlakozás kész! Add meg a tábla nevet manuálisan, vagy válassz a listából.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Csatlakozási hiba");
+      const errorMsg = err instanceof Error ? err.message : "Csatlakozási hiba";
+      addLog(`HIBA: ${errorMsg}`);
+      setError(errorMsg);
       setIsConnected(false);
     } finally {
       setIsLoadingTables(false);
+    }
+  };
+
+  // Fetch columns when table is selected
+  const fetchColumns = async (tableName: string) => {
+    if (!supabaseConfig.url || !supabaseConfig.anonKey || !tableName) {
+      return;
+    }
+
+    setIsLoadingColumns(true);
+    addLog(`Oszlopok lekérése: ${tableName}...`);
+
+    try {
+      const cleanUrl = supabaseConfig.url.replace(/\/$/, "");
+      
+      // Fetch one row to detect columns
+      const response = await fetch(
+        `${cleanUrl}/rest/v1/${tableName}?limit=1`,
+        {
+          headers: {
+            apikey: supabaseConfig.anonKey,
+            Authorization: `Bearer ${supabaseConfig.anonKey}`,
+            Prefer: "count=exact",
+          },
+        }
+      );
+
+      addLog(`Oszlop lekérés válasz: ${response.status}`);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        addLog(`Oszlop hiba: ${errorText}`);
+        
+        // Check for RLS error
+        if (response.status === 401 || response.status === 403 || errorText.includes("RLS") || errorText.includes("policy")) {
+          throw new Error("RLS policy blokkolja az olvasást. Állítsd be a SELECT engedélyt a táblán!");
+        }
+        throw new Error(`Nem sikerült az oszlopokat lekérni (${response.status})`);
+      }
+
+      const data = await response.json();
+      const totalCount = response.headers.get("content-range");
+      addLog(`Összes sor a táblában: ${totalCount || "ismeretlen"}`);
+
+      if (Array.isArray(data) && data.length > 0) {
+        const columns = Object.keys(data[0]).map(name => ({
+          name,
+          type: typeof data[0][name],
+        }));
+        setTableColumns(columns);
+        addLog(`Talált oszlopok: ${columns.map(c => c.name).join(", ")}`);
+
+        // Auto-detect email and name columns
+        const emailCol = columns.find(c => 
+          c.name.toLowerCase().includes("email") || 
+          c.name.toLowerCase() === "e-mail" ||
+          c.name.toLowerCase() === "mail"
+        );
+        const nameCol = columns.find(c => 
+          c.name.toLowerCase().includes("name") || 
+          c.name.toLowerCase() === "nev" ||
+          c.name.toLowerCase() === "név"
+        );
+
+        if (emailCol) {
+          addLog(`Auto-detektált email oszlop: ${emailCol.name}`);
+        }
+        if (nameCol) {
+          addLog(`Auto-detektált név oszlop: ${nameCol.name}`);
+        }
+
+        setSupabaseConfig(prev => ({
+          ...prev,
+          table: tableName,
+          emailColumn: emailCol?.name || prev.emailColumn || "",
+          nameColumn: nameCol?.name || prev.nameColumn || "",
+        }));
+      } else {
+        addLog("A tábla üres, próbálom a séma alapján...");
+        // Try to get columns from OpenAPI schema
+        const schemaResponse = await fetch(
+          `${cleanUrl}/rest/v1/`,
+          {
+            headers: {
+              apikey: supabaseConfig.anonKey,
+              Authorization: `Bearer ${supabaseConfig.anonKey}`,
+              Accept: "application/openapi+json",
+            },
+          }
+        );
+
+        if (schemaResponse.ok) {
+          const schema = await schemaResponse.json();
+          const tablePath = `/${tableName}`;
+          if (schema.definitions?.[tableName]?.properties) {
+            const columns = Object.keys(schema.definitions[tableName].properties).map(name => ({
+              name,
+              type: schema.definitions[tableName].properties[name].type || "unknown",
+            }));
+            setTableColumns(columns);
+            addLog(`Oszlopok a sémából: ${columns.map(c => c.name).join(", ")}`);
+          }
+        }
+
+        setSupabaseConfig(prev => ({
+          ...prev,
+          table: tableName,
+        }));
+      }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "Oszlop lekérési hiba";
+      addLog(`HIBA: ${errorMsg}`);
+      setError(errorMsg);
+    } finally {
+      setIsLoadingColumns(false);
     }
   };
 
@@ -197,12 +350,32 @@ export function RecipientList({
       return;
     }
 
+    if (!supabaseConfig.emailColumn) {
+      setError("Kérlek válaszd ki az email oszlopot!");
+      return;
+    }
+
     setIsLoadingRecipients(true);
     setError(null);
+    addLog(`Címzettek betöltése: ${supabaseConfig.table}...`);
+    addLog(`Email oszlop: ${supabaseConfig.emailColumn}, Név oszlop: ${supabaseConfig.nameColumn || "(nincs)"}`);
 
     try {
+      const cleanUrl = supabaseConfig.url.replace(/\/$/, "");
+      
+      // Build select query with only needed columns
+      const selectColumns = [supabaseConfig.emailColumn];
+      if (supabaseConfig.nameColumn) {
+        selectColumns.push(supabaseConfig.nameColumn);
+      }
+      // Also try to get id if exists
+      selectColumns.push("id");
+
+      const selectQuery = selectColumns.join(",");
+      addLog(`SELECT query: ${selectQuery}`);
+
       const response = await fetch(
-        `${supabaseConfig.url}/rest/v1/${supabaseConfig.table}?select=*`,
+        `${cleanUrl}/rest/v1/${supabaseConfig.table}?select=${selectQuery}`,
         {
           headers: {
             apikey: supabaseConfig.anonKey,
@@ -211,39 +384,85 @@ export function RecipientList({
         }
       );
 
+      addLog(`Válasz státusz: ${response.status} ${response.statusText}`);
+
       if (!response.ok) {
-        throw new Error(`Hiba a táblázat lekérésénél: ${response.statusText}`);
+        const errorText = await response.text();
+        addLog(`Hiba részletek: ${errorText}`);
+        
+        // Check for specific errors
+        if (response.status === 401) {
+          throw new Error("Hibás API kulcs vagy lejárt token");
+        }
+        if (response.status === 403) {
+          throw new Error("RLS policy blokkolja az olvasást. Ellenőrizd a tábla jogosultságait!");
+        }
+        if (response.status === 404) {
+          throw new Error(`A "${supabaseConfig.table}" tábla nem található`);
+        }
+        if (errorText.includes("column") && errorText.includes("does not exist")) {
+          throw new Error(`Az oszlop nem létezik: ${errorText}`);
+        }
+        throw new Error(`Hiba a lekérésénél: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
+      addLog(`Kapott adatok száma: ${Array.isArray(data) ? data.length : "nem tömb"}`);
 
       if (!Array.isArray(data)) {
+        addLog(`Kapott adat típusa: ${typeof data}`);
+        addLog(`Kapott adat: ${JSON.stringify(data).slice(0, 200)}`);
         throw new Error("A válasznak tömbnek kell lennie");
       }
 
+      if (data.length === 0) {
+        addLog("A tábla üres vagy az RLS policy nem enged olvasást");
+        throw new Error("A tábla üres, vagy nincs olvasási jogosultságod (RLS policy)");
+      }
+
+      // Log first row for debugging
+      addLog(`Első sor: ${JSON.stringify(data[0])}`);
+
       const validRecipients: Recipient[] = [];
+      let skippedCount = 0;
+
       for (const item of data) {
-        if (typeof item === "object" && item !== null && typeof item.email === "string") {
-          validRecipients.push({
-            id: item.id,
-            email: item.email,
-            name: item.name || item.email.split("@")[0],
-          });
+        if (typeof item === "object" && item !== null) {
+          const email = item[supabaseConfig.emailColumn];
+          
+          if (typeof email === "string" && email.includes("@")) {
+            const name = supabaseConfig.nameColumn 
+              ? (item[supabaseConfig.nameColumn] || email.split("@")[0])
+              : email.split("@")[0];
+            
+            validRecipients.push({
+              id: item.id?.toString(),
+              email: email.trim(),
+              name: String(name).trim(),
+            });
+          } else {
+            skippedCount++;
+          }
         }
       }
 
+      addLog(`Érvényes címzettek: ${validRecipients.length}, Kihagyott: ${skippedCount}`);
+
       if (validRecipients.length === 0) {
-        throw new Error("Nem található érvényes címzett a táblában");
+        throw new Error(`Nem található érvényes email a "${supabaseConfig.emailColumn}" oszlopban`);
       }
 
       onRecipientsChange(validRecipients);
       onSelectionChange(new Set());
       setSupabaseDialogOpen(false);
+      addLog("Betöltés sikeres!");
 
       // Save config
       localStorage.setItem(SUPABASE_CONFIG_KEY, JSON.stringify(supabaseConfig));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Hiba a betöltés során");
+      const errorMsg = err instanceof Error ? err.message : "Hiba a betöltés során";
+      addLog(`HIBA: ${errorMsg}`);
+      setError(errorMsg);
     } finally {
       setIsLoadingRecipients(false);
     }
@@ -399,17 +618,50 @@ export function RecipientList({
                 Csatlakozás / Táblák lekérése
               </Button>
 
+              {/* Manual table name input - always visible after connection */}
+              {isConnected && (
+                <div className="space-y-2">
+                  <Label htmlFor="table-name">Tábla neve</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="table-name"
+                      placeholder="pl. subscribers, users, contacts..."
+                      value={supabaseConfig.table}
+                      onChange={(e) =>
+                        setSupabaseConfig({ ...supabaseConfig, table: e.target.value })
+                      }
+                    />
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        if (supabaseConfig.table) {
+                          fetchColumns(supabaseConfig.table);
+                        }
+                      }}
+                      disabled={!supabaseConfig.table || isLoadingColumns}
+                    >
+                      {isLoadingColumns ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        "Oszlopok"
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               {availableTables.length > 0 && (
                 <div className="space-y-2">
-                  <Label>Válassz táblát</Label>
-                  <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
+                  <Label className="text-xs text-muted-foreground">Vagy válassz a listából:</Label>
+                  <div className="grid grid-cols-2 gap-2 max-h-24 overflow-y-auto">
                     {availableTables.map((table) => (
                       <Button
                         key={table}
                         size="sm"
                         variant={supabaseConfig.table === table ? "default" : "outline"}
-                        onClick={() => setSupabaseConfig({ ...supabaseConfig, table })}
-                        className="justify-start text-xs"
+                        onClick={() => fetchColumns(table)}
+                        disabled={isLoadingColumns}
+                        className="justify-start text-xs bg-transparent"
                       >
                         {table}
                       </Button>
@@ -418,23 +670,97 @@ export function RecipientList({
                 </div>
               )}
 
-              {supabaseConfig.table && (
-                <div className="space-y-2">
-                  <Label htmlFor="table-name">Tábla neve</Label>
-                  <Input
-                    id="table-name"
-                    placeholder="subscribers"
-                    value={supabaseConfig.table}
-                    onChange={(e) =>
-                      setSupabaseConfig({ ...supabaseConfig, table: e.target.value })
-                    }
-                  />
+              {/* Column Selection - from detected columns */}
+              {tableColumns.length > 0 && (
+                <div className="space-y-3 p-3 bg-secondary/30 rounded-lg border border-border">
+                  <p className="text-sm font-medium">Oszlop hozzárendelés</p>
+                  
+                  <div className="space-y-2">
+                    <Label className="text-xs">Email oszlop *</Label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {tableColumns.map((col) => (
+                        <button
+                          key={col.name}
+                          type="button"
+                          onClick={() => setSupabaseConfig({ ...supabaseConfig, emailColumn: col.name })}
+                          className={`px-2.5 py-1 text-xs rounded-md border transition-all ${
+                            supabaseConfig.emailColumn === col.name
+                              ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                              : "bg-transparent border-border hover:border-primary/50 hover:bg-primary/10"
+                          }`}
+                        >
+                          {col.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-xs">Név oszlop (opcionális)</Label>
+                    <div className="flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setSupabaseConfig({ ...supabaseConfig, nameColumn: "" })}
+                        className={`px-2.5 py-1 text-xs rounded-md border transition-all ${
+                          !supabaseConfig.nameColumn
+                            ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                            : "bg-transparent border-border hover:border-primary/50 hover:bg-primary/10"
+                        }`}
+                      >
+                        (nincs)
+                      </button>
+                      {tableColumns.map((col) => (
+                        <button
+                          key={col.name}
+                          type="button"
+                          onClick={() => setSupabaseConfig({ ...supabaseConfig, nameColumn: col.name })}
+                          className={`px-2.5 py-1 text-xs rounded-md border transition-all ${
+                            supabaseConfig.nameColumn === col.name
+                              ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                              : "bg-transparent border-border hover:border-primary/50 hover:bg-primary/10"
+                          }`}
+                        >
+                          {col.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Manual Column Input - if no columns detected (RLS issue) */}
+              {tableColumns.length === 0 && supabaseConfig.table && (
+                <div className="space-y-3 p-3 bg-secondary/30 rounded-lg border border-border">
+                  <p className="text-sm font-medium">Manuális oszlop megadás</p>
+                  <p className="text-xs text-muted-foreground">
+                    Ha az oszlopok nem töltődtek be (pl. RLS policy miatt), add meg manuálisan:
+                  </p>
+                  
+                  <div className="space-y-2">
+                    <Label className="text-xs">Email oszlop neve *</Label>
+                    <Input
+                      placeholder="pl. email, e_mail, user_email..."
+                      value={supabaseConfig.emailColumn}
+                      onChange={(e) => setSupabaseConfig({ ...supabaseConfig, emailColumn: e.target.value })}
+                      className="h-8 text-sm"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-xs">Név oszlop neve (opcionális)</Label>
+                    <Input
+                      placeholder="pl. name, nev, full_name..."
+                      value={supabaseConfig.nameColumn}
+                      onChange={(e) => setSupabaseConfig({ ...supabaseConfig, nameColumn: e.target.value })}
+                      className="h-8 text-sm"
+                    />
+                  </div>
                 </div>
               )}
 
               <Button
                 onClick={fetchRecipientsFromSupabase}
-                disabled={isLoadingRecipients || !supabaseConfig.table}
+                disabled={isLoadingRecipients || !supabaseConfig.table || !supabaseConfig.emailColumn}
                 className="w-full"
               >
                 {isLoadingRecipients ? (
@@ -447,6 +773,20 @@ export function RecipientList({
 
               {error && (
                 <p className="text-sm text-destructive">{error}</p>
+              )}
+
+              {/* Debug Log */}
+              {supabaseLog.length > 0 && (
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Napló</Label>
+                  <div className="bg-background border border-border rounded p-2 max-h-32 overflow-y-auto font-mono text-[10px] text-muted-foreground">
+                    {supabaseLog.map((log, i) => (
+                      <div key={i} className={log.includes("HIBA") ? "text-destructive" : log.includes("sikeres") ? "text-green-500" : ""}>
+                        {log}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
           </DialogContent>
